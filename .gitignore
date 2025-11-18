@@ -42,10 +42,19 @@ htmlcov/
 # 数据文件
 data_sources/
 data/ttd/
+# 忽略所有 Excel 文件，但允许特定的官方数据文件
 *.xlsx
 *.xls
 *.csv
 *.tsv
+# 允许官方数据源文件（用户需要这些文件来生成本体数据）
+!data/国家临床版2.0疾病诊断编码（ICD-10）.xlsx
+!data/国家药品编码本位码信息（国产药品）.xlsx
+!data/国家药品编码本位码信息（进口药品）.xlsx
+# 也允许 data_sources/ 目录下的这些文件
+!data_sources/国家临床版2.0疾病诊断编码（ICD-10）.xlsx
+!data_sources/国家药品编码本位码信息（国产药品）.xlsx
+!data_sources/国家药品编码本位码信息（进口药品）.xlsx
 
 # 生成的本体数据文件（应该通过脚本生成，不需要提交到 Git）
 ontology/data/*.json
