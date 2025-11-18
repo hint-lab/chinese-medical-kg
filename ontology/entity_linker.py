@@ -106,7 +106,12 @@ class EntityLinker:
             lower_match["match_type"] = "case_insensitive"
             return lower_match
         
-        # 3. 模糊匹配（编辑距离）
+        # 3. 部分匹配（搜索词是实体名称的一部分，或实体名称包含搜索词）
+        partial_match = self._partial_match(entity_text)
+        if partial_match:
+            return partial_match
+        
+        # 4. 模糊匹配（编辑距离）
         fuzzy_match = self._fuzzy_match(entity_text, threshold)
         if fuzzy_match:
             return fuzzy_match
@@ -117,6 +122,55 @@ class EntityLinker:
     def _exact_match(self, entity_text: str) -> Optional[Dict]:
         """精确匹配"""
         return self.trie.search(entity_text)
+    
+    def _partial_match(self, entity_text: str) -> Optional[Dict]:
+        """部分匹配：搜索词是实体名称的一部分，或实体名称包含搜索词"""
+        entity_text_lower = entity_text.lower()
+        candidates = []
+        
+        # 收集所有可能的匹配
+        for entity_name, entity_info in self.ontology.items():
+            entity_name_lower = entity_name.lower()
+            score = 0
+            match_type = None
+            
+            # 如果搜索词是实体名称的一部分
+            if entity_text_lower in entity_name_lower:
+                # 计算相似度（搜索词长度 / 实体名称长度）
+                similarity = len(entity_text) / len(entity_name) if len(entity_name) > 0 else 0
+                # 如果相似度足够高（至少30%）
+                if similarity >= 0.3:
+                    # 优先匹配更短、更简单的名称（如"盐酸二甲双胍"优于"二甲双胍恩格列净片"）
+                    # 计算得分：相似度 * (1 - 长度惩罚)
+                    length_penalty = min(0.3, (len(entity_name) - len(entity_text)) / 50.0)
+                    score = similarity * (1 - length_penalty)
+                    match_type = "partial"
+            
+            # 检查通用名（generic_name）字段
+            generic_name = entity_info.get("generic_name", "")
+            if generic_name and entity_text_lower in generic_name.lower():
+                similarity = len(entity_text) / len(generic_name) if len(generic_name) > 0 else 0
+                if similarity >= 0.3:
+                    length_penalty = min(0.3, (len(generic_name) - len(entity_text)) / 50.0)
+                    generic_score = similarity * (1 - length_penalty) * 0.9  # 通用名匹配稍低优先级
+                    if generic_score > score:
+                        score = generic_score
+                        match_type = "partial_generic"
+            
+            if score > 0:
+                candidates.append((score, entity_name, entity_info, match_type))
+        
+        # 返回得分最高的匹配
+        if candidates:
+            candidates.sort(key=lambda x: x[0], reverse=True)
+            best_score, best_name, best_info, best_type = candidates[0]
+            result = best_info.copy()
+            result["confidence"] = min(0.95, best_score)
+            result["match_type"] = best_type
+            result["matched_text"] = best_name
+            return result
+        
+        return None
     
     def _fuzzy_match(self, entity_text: str, threshold: int) -> Optional[Dict]:
         """模糊匹配"""

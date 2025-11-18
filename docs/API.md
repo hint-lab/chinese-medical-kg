@@ -55,6 +55,22 @@ uvicorn src.api.main:app --host 0.0.0.0 --port 8000 --reload
 
 # 方式3: 后台运行
 nohup uvicorn src.api.main:app --host 0.0.0.0 --port 8000 > api.log 2>&1 &
+
+# 方式4: Docker部署（推荐）🐳
+# 1. 准备数据库（首次运行，仅需3秒）
+python scripts/migrate_to_sqlite.py
+
+# 2. 启动服务
+docker-compose up -d
+
+# 3. 查看日志
+docker-compose logs -f
+
+# 4. 停止服务
+docker-compose down
+
+# 国内用户加速（推荐）⚡
+docker-compose -f docker-compose.cn.yml up -d
 ```
 
 #### 访问文档
@@ -271,6 +287,50 @@ lsof -i :8000
 
 # 或使用其他端口
 uvicorn src.api.main:app --host 0.0.0.0 --port 8001
+```
+
+### Docker部署问题
+
+#### 容器无法启动
+
+```bash
+# 检查容器状态
+docker-compose ps
+
+# 查看详细日志
+docker-compose logs api
+
+# 检查数据库文件是否存在
+ls -lh ontology/data/medical_kg.db
+
+# 如果数据库不存在，先迁移数据
+python scripts/migrate_to_sqlite.py
+```
+
+#### 容器启动后无法访问
+
+```bash
+# 检查容器是否运行
+docker ps | grep chinese-medical-kg
+
+# 检查端口映射
+docker-compose ps
+
+# 测试容器内部服务
+docker-compose exec api curl http://localhost:8000/
+
+# 重启容器
+docker-compose restart
+```
+
+#### 数据库文件权限问题
+
+```bash
+# 确保数据库文件有正确的权限
+chmod 644 ontology/data/medical_kg.db
+
+# 如果使用Docker，确保挂载目录有正确权限
+chmod -R 755 ontology/data/
 ```
 
 ---
