@@ -481,7 +481,24 @@ docker-compose -f docker-compose.cn.yml up -d
 
 ## ⚙️ 安装
 
-### 方式1: 直接使用（推荐）
+### 方式1: 使用 uv（推荐，最快）⚡
+
+```bash
+# 安装 uv（如果未安装）
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# 使用 uv 设置项目环境
+./uv_setup.sh
+
+# 或手动使用 uv
+uv sync                    # 同步依赖并创建虚拟环境
+source .venv/bin/activate  # 激活虚拟环境
+
+# 迁移数据到SQLite
+python scripts/migrate_to_sqlite.py
+```
+
+### 方式2: 直接使用 pip
 
 ```bash
 # 安装依赖
@@ -491,7 +508,7 @@ pip install -r requirements.txt
 python scripts/migrate_to_sqlite.py
 ```
 
-### 方式2: pip安装包
+### 方式3: pip安装包
 
 ```bash
 # 安装基础包
@@ -745,21 +762,25 @@ MIT License
 **开始使用**: 
 
 ```bash
-# 方式1: 基础功能
-./快速开始.sh
+# 方式1: 快速开始脚本（推荐）⭐⭐⭐
+./quick_start.sh                       # 自动完成所有设置
 
-# 方式2: SQLite数据库版本（强烈推荐）⭐⭐⭐
+# 方式2: 使用 uv（最快）⚡
+./uv_setup.sh                          # 使用 uv 设置环境
+uv run python example_ontology_usage.py
+
+# 方式3: SQLite数据库版本
 python scripts/migrate_to_sqlite.py   # 首次迁移（仅需3秒）
 python kg_query_db.py                  # 交互式查询
 
-# 方式3: CLI命令行工具
+# 方式4: CLI命令行工具
 python scripts/kg_cli.py search 阿司匹林 --type Drug
 
-# 方式4: FastAPI服务
+# 方式5: FastAPI服务
 python -m src.api.main                 # 启动API服务
 # 访问 http://localhost:8000/docs
 
-# 方式5: pip安装包
+# 方式6: pip安装包
 pip install -e .                       # 安装包
 from ontology.db_loader import MedicalKnowledgeGraphDB
 ```

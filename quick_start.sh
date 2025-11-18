@@ -13,12 +13,32 @@ python3 --version
 # 安装依赖
 echo ""
 echo "2️⃣  安装依赖..."
-pip install -q -r requirements.txt
-if [ $? -eq 0 ]; then
-    echo "✅ 依赖安装成功"
+
+# 检查是否使用 uv（更快的包管理器）
+if command -v uv &> /dev/null; then
+    echo "✅ 检测到 uv，使用 uv 安装依赖（更快）..."
+    uv pip install -r requirements.txt
+    if [ $? -eq 0 ]; then
+        echo "✅ 依赖安装成功（使用 uv）"
+    else
+        echo "⚠️  uv 安装失败，尝试使用 pip..."
+        pip install -q -r requirements.txt
+        if [ $? -eq 0 ]; then
+            echo "✅ 依赖安装成功（使用 pip）"
+        else
+            echo "❌ 依赖安装失败"
+            exit 1
+        fi
+    fi
 else
-    echo "❌ 依赖安装失败"
-    exit 1
+    echo "ℹ️  使用 pip 安装依赖（建议安装 uv 以获得更快速度: curl -LsSf https://astral.sh/uv/install.sh | sh）"
+    pip install -q -r requirements.txt
+    if [ $? -eq 0 ]; then
+        echo "✅ 依赖安装成功"
+    else
+        echo "❌ 依赖安装失败"
+        exit 1
+    fi
 fi
 
 # 检查并构建数据
