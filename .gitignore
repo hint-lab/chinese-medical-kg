@@ -25,6 +25,9 @@ venv/
 ENV/
 env/
 .venv
+# uv 虚拟环境
+.venv/
+uv.lock  # uv 锁文件（可选：如果希望锁定依赖版本，可以提交此文件）
 
 # IDE
 .vscode/
