@@ -189,9 +189,9 @@ def demo_quality_check(linker):
 
 def main():
     """主函数"""
-    print("\n" + "🚀" * 30)
+    print("\n" + "#" * 30)
     print("      中文医学本体（Ontology）使用演示")
-    print("🚀" * 30)
+    print("#" * 30)
     
     # 1. 加载数据
     loader = demo_basic_usage()

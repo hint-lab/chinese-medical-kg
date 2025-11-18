@@ -3,9 +3,11 @@
 将官方 Excel（ICD-10 + 国家药品编码）解析成本体 JSON
 
 输入文件（默认）：
-- ../data/国家临床版2.0疾病诊断编码（ICD-10）.xlsx
-- ../data/国家药品编码本位码信息（国产药品）.xlsx
-- ../data/国家药品编码本位码信息（进口药品）.xlsx
+- data/国家临床版2.0疾病诊断编码（ICD-10）.xlsx
+- data/国家药品编码本位码信息（国产药品）.xlsx
+- data/国家药品编码本位码信息（进口药品）.xlsx
+
+如果 data/ 不存在，会自动尝试 data_sources/ 目录（兼容旧版本）
 """
 
 from __future__ import annotations
@@ -18,8 +20,10 @@ import pandas as pd
 
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
-WORKSPACE_ROOT = ROOT_DIR.parent
-DATA_DIR = WORKSPACE_ROOT / "data"
+# 统一使用项目目录下的 data/ 目录（如果不存在则尝试 data_sources/，兼容旧版本）
+DATA_DIR = ROOT_DIR / "data"
+if not DATA_DIR.exists():
+    DATA_DIR = ROOT_DIR / "data_sources"
 ONTOLOGY_DIR = ROOT_DIR / "ontology" / "data"
 
 ICD_FILE = DATA_DIR / "国家临床版2.0疾病诊断编码（ICD-10）.xlsx"
@@ -197,8 +201,71 @@ def merge_drug_sources(*sources: Dict[str, dict]) -> Dict[str, dict]:
     return merged
 
 
+def extract_generic_name_and_dosage(drug_name: str) -> tuple:
+    """
+    从药品名称中提取通用名和剂型
+    
+    Args:
+        drug_name: 药品名称，如"阿司匹林注射液"
+    
+    Returns:
+        (generic_name, dosage_form, is_generic)
+        - generic_name: 通用名，如"阿司匹林"
+        - dosage_form: 剂型，如"注射液"
+        - is_generic: 是否为通用名（无剂型后缀）
+    """
+    if not drug_name:
+        return drug_name, None, True
+    
+    # 常见剂型列表（按长度降序，优先匹配长剂型）
+    DOSAGE_FORMS = [
+        '注射液', '注射剂', '针剂',
+        '肠溶片', '肠溶胶囊',
+        '缓释片', '缓释胶囊',
+        '控释片', '控释胶囊',
+        '分散片', '咀嚼片', '泡腾片', '口含片', '舌下片',
+        '薄膜衣片', '糖衣片',
+        '片', '片剂',
+        '胶囊', '胶囊剂',
+        '颗粒', '颗粒剂',
+        '散', '散剂',
+        '丸', '丸剂',
+        '栓', '栓剂',
+        '软膏', '软膏剂',
+        '乳膏', '乳膏剂',
+        '凝胶', '凝胶剂',
+        '贴', '贴剂',
+        '喷雾', '喷雾剂',
+        '吸入', '吸入剂',
+        '滴眼', '滴眼液',
+        '滴耳', '滴耳液',
+        '滴鼻', '滴鼻液',
+        '溶液', '溶液剂',
+        '混悬液', '混悬剂',
+        '乳剂',
+        '糖浆', '糖浆剂',
+        '口服液',
+        '合剂',
+    ]
+    
+    # 按长度排序，优先匹配长剂型
+    sorted_forms = sorted(DOSAGE_FORMS, key=len, reverse=True)
+    
+    # 尝试匹配剂型
+    for form in sorted_forms:
+        if drug_name.endswith(form):
+            generic_name = drug_name[:-len(form)]
+            if generic_name:  # 确保提取到通用名
+                return generic_name, form, False
+    
+    # 如果没有匹配到剂型，可能是通用名
+    return drug_name, None, True
+
+
 def finalize_sets(records: Dict[str, dict]) -> Dict[str, dict]:
+    """最终化记录，清理集合并提取通用名"""
     for entry in records.values():
+        # 清理集合字段
         for key in [
             "aliases",
             "dosage_forms",
@@ -210,6 +277,16 @@ def finalize_sets(records: Dict[str, dict]) -> Dict[str, dict]:
             "sources",
         ]:
             entry[key] = sorted(v for v in entry[key] if v)
+        
+        # 提取通用名和剂型
+        drug_name = entry.get("standard_name", "")
+        generic_name, dosage_form, is_generic = extract_generic_name_and_dosage(drug_name)
+        
+        entry["generic_name"] = generic_name
+        entry["is_generic"] = is_generic
+        if dosage_form:
+            entry["dosage_form"] = dosage_form
+    
     return records
 
 

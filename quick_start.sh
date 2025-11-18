@@ -1,0 +1,243 @@
+#!/bin/bash
+# 中文医学本体 - 一键开始脚本（自动完成所有数据构建）
+
+echo "=========================================="
+echo "   中文医学本体（Ontology）快速开始"
+echo "=========================================="
+
+# 检查Python版本
+echo ""
+echo "1️⃣  检查环境..."
+python3 --version
+
+# 安装依赖
+echo ""
+echo "2️⃣  安装依赖..."
+pip install -q -r requirements.txt
+if [ $? -eq 0 ]; then
+    echo "✅ 依赖安装成功"
+else
+    echo "❌ 依赖安装失败"
+    exit 1
+fi
+
+# 检查并构建数据
+echo ""
+echo "3️⃣  检查并构建数据..."
+
+# 检查统一本体是否已存在且完整
+NEED_BUILD=false
+if [ -f "ontology/data/unified_ontology.json" ]; then
+    stats=$(python3 -c "
+import json
+try:
+    data = json.load(open('ontology/data/unified_ontology.json'))
+    stats = data.get('metadata', {}).get('statistics', {})
+    print(f\"{stats.get('drugs', 0)},{stats.get('diseases', 0)},{stats.get('genes', 0)},{stats.get('total_entities', 0)}\")
+except:
+    print('0,0,0,0')
+" 2>/dev/null || echo "0,0,0,0")
+    
+    IFS=',' read -r drug_count disease_count gene_count total_count <<< "$stats"
+    
+    if [ "$total_count" -gt 0 ] && [ "$gene_count" -gt 0 ]; then
+        echo "✅ 统一本体数据已就绪:"
+        echo "   - 药物: $drug_count 条"
+        echo "   - 疾病: $disease_count 条"
+        echo "   - 基因/靶点: $gene_count 条"
+        echo "   - 总计: $total_count 条实体"
+        NEED_BUILD=false
+    else
+        echo "⚠️  统一本体数据不完整，需要重新构建"
+        NEED_BUILD=true
+    fi
+else
+    echo "⚠️  统一本体数据不存在，开始构建..."
+    NEED_BUILD=true
+fi
+
+# 如果需要构建，执行完整的数据构建流程
+if [ "$NEED_BUILD" = true ]; then
+    echo ""
+    echo "📦 开始数据构建流程..."
+    
+    # 步骤1: 解析官方 Excel 数据（如果存在）
+    echo ""
+    echo "[步骤 1/4] 解析官方 Excel 数据..."
+    if [ -f "data/国家临床版2.0疾病诊断编码（ICD-10）.xlsx" ] || \
+       [ -f "data_sources/国家临床版2.0疾病诊断编码（ICD-10）.xlsx" ]; then
+        python scripts/parse_official_medical_excel.py
+        if [ $? -eq 0 ]; then
+            echo "✅ Excel 数据解析完成"
+        else
+            echo "⚠️  Excel 数据解析失败，继续其他步骤"
+        fi
+    else
+        echo "ℹ️  未找到 Excel 文件，跳过此步骤"
+        echo "   提示: 将 Excel 文件放到 data/ 或 data_sources/ 目录"
+    fi
+    
+    # 步骤2: 检查并下载/解析 TTD 数据
+    echo ""
+    echo "[步骤 2/4] 处理 TTD 数据（包含基因/靶点）..."
+    
+    # 检查 TTD 数据目录
+    TTD_DIR="data/ttd"
+    if [ ! -d "$TTD_DIR" ]; then
+        TTD_DIR="data_sources/ttd"
+    fi
+    
+    # 检查 TTD 数据文件是否存在
+    if [ -f "$TTD_DIR/P1-01-TTD_target_download.txt" ] && \
+       [ -f "$TTD_DIR/P1-02-TTD_drug_download.txt" ]; then
+        echo "✅ 发现 TTD 数据文件，开始解析..."
+        python scripts/parse_ttd_data.py
+        if [ $? -eq 0 ]; then
+            echo "✅ TTD 数据解析完成"
+        else
+            echo "⚠️  TTD 数据解析失败"
+        fi
+    else
+        echo "⚠️  TTD 数据文件不存在"
+        echo "   提示: 运行 './scripts/download_ttd_data.sh' 下载 TTD 数据"
+        echo "   或访问: https://ttd.idrblab.cn/full-data-download"
+        echo ""
+        read -p "是否现在下载 TTD 数据？[y/N] " -n 1 -r
+        echo
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            ./scripts/download_ttd_data.sh
+            if [ $? -eq 0 ]; then
+                echo "✅ TTD 数据下载完成，开始解析..."
+                python scripts/parse_ttd_data.py
+            fi
+        else
+            echo "⚠️  跳过 TTD 数据，将只使用基础数据（无基因/靶点）"
+        fi
+    fi
+    
+    # 步骤3: 合并所有数据源
+    echo ""
+    echo "[步骤 3/4] 合并所有数据源到统一本体..."
+    python scripts/merge_ontology.py
+    if [ $? -eq 0 ]; then
+        echo "✅ 数据合并完成"
+        
+        # 显示统计信息
+        if [ -f "ontology/data/unified_ontology.json" ]; then
+            stats=$(python3 -c "
+import json
+try:
+    data = json.load(open('ontology/data/unified_ontology.json'))
+    stats = data.get('metadata', {}).get('statistics', {})
+    print(f\"{stats.get('drugs', 0)},{stats.get('diseases', 0)},{stats.get('genes', 0)},{stats.get('total_entities', 0)}\")
+except:
+    print('0,0,0,0')
+" 2>/dev/null || echo "0,0,0,0")
+            
+            IFS=',' read -r drug_count disease_count gene_count total_count <<< "$stats"
+            echo ""
+            echo "📊 数据统计:"
+            echo "   - 药物: $drug_count 条"
+            echo "   - 疾病: $disease_count 条"
+            echo "   - 基因/靶点: $gene_count 条"
+            echo "   - 总计: $total_count 条实体"
+        fi
+    else
+        echo "❌ 数据合并失败"
+        exit 1
+    fi
+    
+    # 步骤4: 迁移到 SQLite 数据库
+    echo ""
+    echo "[步骤 4/4] 迁移到 SQLite 数据库（提升性能）..."
+    python scripts/migrate_to_sqlite.py
+    if [ $? -eq 0 ]; then
+        echo "✅ SQLite 数据库创建完成"
+        
+        # 显示数据库统计
+        if [ -f "ontology/data/medical_kg.db" ]; then
+            db_size=$(du -h ontology/data/medical_kg.db | cut -f1)
+            echo "   - 数据库文件: ontology/data/medical_kg.db ($db_size)"
+        fi
+    else
+        echo "⚠️  SQLite 数据库迁移失败（可选步骤）"
+    fi
+fi
+
+# 检查 SQLite 数据库
+echo ""
+echo "4️⃣  检查 SQLite 数据库..."
+if [ -f "ontology/data/medical_kg.db" ]; then
+    echo "✅ SQLite 数据库已就绪"
+    db_size=$(du -h ontology/data/medical_kg.db | cut -f1)
+    echo "   - 文件大小: $db_size"
+else
+    echo "⚠️  SQLite 数据库不存在"
+    echo "   提示: 运行 'python scripts/migrate_to_sqlite.py' 创建数据库"
+fi
+
+# 运行演示
+echo ""
+echo "5️⃣  运行演示脚本..."
+echo ""
+python3 example_ontology_usage.py
+
+echo ""
+echo "=========================================="
+echo "  完成！"
+echo "=========================================="
+echo ""
+
+# 显示最终统计和使用指南
+if [ -f "ontology/data/unified_ontology.json" ]; then
+    stats=$(python3 -c "
+import json
+try:
+    data = json.load(open('ontology/data/unified_ontology.json'))
+    stats = data.get('metadata', {}).get('statistics', {})
+    print(f\"{stats.get('drugs', 0)},{stats.get('diseases', 0)},{stats.get('genes', 0)},{stats.get('total_entities', 0)}\")
+except:
+    print('0,0,0,0')
+" 2>/dev/null || echo "0,0,0,0")
+    
+    IFS=',' read -r drug_count disease_count gene_count total_count <<< "$stats"
+    
+    echo "✅ 数据已准备完成！"
+    echo ""
+    echo "📊 数据统计:"
+    echo "   - 药物: $drug_count 条"
+    echo "   - 疾病: $disease_count 条"
+    echo "   - 基因/靶点: $gene_count 条"
+    echo "   - 总计: $total_count 条实体"
+    echo ""
+    echo "📚 使用方式:"
+    echo ""
+    echo "1. CLI 命令行工具:"
+    echo "   python scripts/kg_cli.py search 阿司匹林 --type Drug"
+    echo "   python scripts/kg_cli.py drug-targets Ibrance"
+    echo ""
+    echo "2. FastAPI 服务:"
+    echo "   python -m src.api.main"
+    echo "   访问: http://localhost:8000/docs"
+    echo ""
+    echo "3. Python API:"
+    echo "   from ontology.db_loader import MedicalKnowledgeGraphDB"
+    echo "   db = MedicalKnowledgeGraphDB()"
+    echo "   result = db.search_entity('阿司匹林')"
+    echo ""
+    if [ -f "ontology/data/medical_kg.db" ]; then
+        echo "✅ SQLite 数据库已就绪，查询速度提升 10-50 倍！"
+    else
+        echo "💡 提示: 运行 'python scripts/migrate_to_sqlite.py' 创建数据库以提升性能"
+    fi
+else
+    echo "⚠️  数据构建未完成，请检查错误信息"
+    echo ""
+    echo "📋 手动构建步骤:"
+    echo "  1. python scripts/parse_official_medical_excel.py  # 解析 Excel"
+    echo "  2. python scripts/parse_ttd_data.py                # 解析 TTD"
+    echo "  3. python scripts/merge_ontology.py                # 合并数据"
+    echo "  4. python scripts/migrate_to_sqlite.py             # 迁移到数据库"
+fi
+
+echo ""

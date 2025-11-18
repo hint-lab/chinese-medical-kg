@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse
 from fastapi import Path as PathParam
 from pydantic import BaseModel
 from typing import Optional, List
+from contextlib import asynccontextmanager
 import sys
 from pathlib import Path
 
@@ -15,16 +16,33 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from ontology.db_loader import MedicalKnowledgeGraphDB
+from src.api.generic_name import router as generic_router
+
+# 全局数据库连接
+_db = None
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """应用生命周期管理"""
+    # 启动时执行（如果需要）
+    yield
+    # 关闭时清理数据库连接
+    global _db
+    if _db:
+        _db.close()
+
 
 # 创建FastAPI应用
 app = FastAPI(
     title="中文医学知识图谱 API",
     description="提供药物、疾病、基因/靶点的查询和关系查询服务",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan
 )
 
-# 全局数据库连接
-_db = None
+# 注册通用名路由
+app.include_router(generic_router)
 
 
 def get_db():
@@ -90,29 +108,58 @@ async def root():
     }
 
 
-@app.get("/api/entities/search", response_model=EntityResponse, tags=["Entities"])
+@app.get("/api/entities/search", tags=["Entities"])
 async def search_entity(
     name: str = Query(..., description="实体名称"),
-    entity_type: Optional[str] = Query(None, description="实体类型: Drug, Disease, Gene")
+    entity_type: Optional[str] = Query(None, description="实体类型: Drug, Disease, Gene"),
+    normalize_to_generic: bool = Query(False, description="对于药物，是否标准化到通用名")
 ):
     """
     搜索实体（支持精确匹配、别名匹配和部分匹配）
     
     - **name**: 实体名称（支持部分匹配，如"替利珠单抗"可匹配"替利珠单抗注射液"）
     - **entity_type**: 实体类型（可选）
+    - **normalize_to_generic**: 对于药物，是否标准化到通用名（默认False）
     
     搜索优先级：
     1. 精确匹配（名称或标准名称）
     2. 别名精确匹配
     3. 部分匹配（名称包含关键词）
     4. 别名部分匹配
+    
+    如果normalize_to_generic=True且是药物制剂，返回通用名信息和相关制剂列表
     """
     try:
         db = get_db()
-        result = db.search_entity(name, entity_type)
+        result = db.search_entity(name, entity_type, normalize_to_generic=normalize_to_generic)
         
         if not result:
             raise HTTPException(status_code=404, detail=f"未找到实体: {name}")
+        
+        # 如果标准化到通用名，返回特殊格式
+        if result.get('normalized'):
+            return {
+                "generic_name": result['generic_name'],
+                "matched_product": {
+                    "id": result['matched_product'].get('id'),
+                    "name": result['matched_product']['name'],
+                    "standard_name": result['matched_product']['standard_name'],
+                    "type": result['matched_product']['type'],
+                    "source": result['matched_product']['source'],
+                    "dosage_form": result['matched_product'].get('dosage_form')
+                },
+                "generic_entity": result['generic_entity'],
+                "related_products": [
+                    {
+                        "name": p['name'],
+                        "standard_name": p['standard_name'],
+                        "dosage_form": p.get('dosage_form')
+                    }
+                    for p in result['related_products']
+                ],
+                "product_count": len(result['related_products']),
+                "normalized": True
+            }
         
         # 获取别名
         aliases = db.get_aliases(result['name'])
@@ -258,14 +305,6 @@ async def get_statistics():
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    """关闭时清理数据库连接"""
-    global _db
-    if _db:
-        _db.close()
 
 
 if __name__ == '__main__':

@@ -169,6 +169,8 @@ def main():
     search_parser.add_argument('name', help='实体名称')
     search_parser.add_argument('--type', choices=['Drug', 'Disease', 'Gene'], 
                               help='实体类型')
+    search_parser.add_argument('--generic', action='store_true',
+                              help='对于药物，标准化到通用名')
     
     # fuzzy 命令
     fuzzy_parser = subparsers.add_parser('fuzzy', help='模糊搜索')
@@ -190,6 +192,10 @@ def main():
     
     # stats 命令
     subparsers.add_parser('stats', help='显示统计信息')
+    
+    # generic 命令
+    generic_parser = subparsers.add_parser('generic', help='按通用名查询药物')
+    generic_parser.add_argument('generic_name', help='药品通用名')
     
     args = parser.parse_args()
     
@@ -219,7 +225,27 @@ def main():
     try:
         # 执行命令
         if args.command == 'search':
-            search_entity(db, args.name, args.type, output_format)
+            result = db.search_entity(args.name, args.type, normalize_to_generic=args.generic)
+            
+            if not result:
+                print(f"❌ 未找到: {args.name}", file=sys.stderr)
+                return
+            
+            # 如果标准化到通用名
+            if result.get('normalized'):
+                if output_format == 'json':
+                    print(json.dumps(result, ensure_ascii=False, indent=2))
+                else:
+                    print(f"✅ 通用名: {result['generic_name']}")
+                    print(f"   匹配的制剂: {result['matched_product']['name']}")
+                    print(f"   相关制剂数: {len(result['related_products'])}")
+                    print(f"\n   制剂列表:")
+                    for p in result['related_products'][:10]:
+                        print(f"     - {p['name']} ({p.get('dosage_form', '')})")
+                    if len(result['related_products']) > 10:
+                        print(f"     ... 还有 {len(result['related_products']) - 10} 个")
+            else:
+                search_entity(db, args.name, args.type, output_format)
         
         elif args.command == 'fuzzy':
             fuzzy_search(db, args.keyword, args.type, args.limit, output_format)
@@ -232,6 +258,19 @@ def main():
         
         elif args.command == 'stats':
             show_statistics(db, output_format)
+        
+        elif args.command == 'generic':
+            result = db.search_by_generic_name(args.generic_name)
+            if output_format == 'json':
+                print(json.dumps(result, ensure_ascii=False, indent=2))
+            else:
+                print(f"✅ 通用名: {result['generic_name']}")
+                print(f"   制剂数: {result['product_count']}")
+                print(f"\n   制剂列表:")
+                for p in result['products'][:20]:
+                    print(f"     - {p['name']} ({p.get('dosage_form', '')})")
+                if len(result['products']) > 20:
+                    print(f"     ... 还有 {len(result['products']) - 20} 个")
     
     except Exception as e:
         print(f"❌ 执行失败: {e}", file=sys.stderr)

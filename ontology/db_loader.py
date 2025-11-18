@@ -52,7 +52,7 @@ class MedicalKnowledgeGraphDB:
         return result
     
     def search_entity(self, name: str, entity_type: Optional[str] = None, 
-                     fuzzy_fallback: bool = True) -> Optional[Dict]:
+                     fuzzy_fallback: bool = True, normalize_to_generic: bool = False) -> Optional[Dict]:
         """
         搜索实体（支持精确匹配、别名匹配和模糊匹配）
         
@@ -60,9 +60,11 @@ class MedicalKnowledgeGraphDB:
             name: 实体名称
             entity_type: 实体类型 (Drug/Disease/Gene)，可选
             fuzzy_fallback: 如果精确匹配失败，是否尝试模糊匹配（默认True）
+            normalize_to_generic: 对于药物，是否标准化到通用名（默认False）
         
         Returns:
             实体信息字典，未找到返回None
+            如果normalize_to_generic=True且是药物，返回包含通用名信息的字典
         """
         cursor = self.conn.cursor()
         
@@ -77,7 +79,23 @@ class MedicalKnowledgeGraphDB:
         result = cursor.execute(query, params).fetchone()
         
         if result:
-            return self._row_to_dict(result)
+            entity = self._row_to_dict(result)
+            
+            # 如果启用通用名标准化且是药物
+            if normalize_to_generic and entity_type == 'Drug' and entity.get('is_generic') == 0:
+                generic_name = entity.get('generic_name')
+                if generic_name:
+                    # 返回通用名信息
+                    generic_info = self.search_by_generic_name(generic_name, return_products=True)
+                    return {
+                        'matched_product': entity,
+                        'generic_name': generic_name,
+                        'generic_entity': generic_info['generic_entity'],
+                        'related_products': generic_info['products'],
+                        'normalized': True
+                    }
+            
+            return entity
         
         # 2. 尝试别名精确匹配
         query = '''
@@ -94,7 +112,22 @@ class MedicalKnowledgeGraphDB:
         result = cursor.execute(query, params).fetchone()
         
         if result:
-            return self._row_to_dict(result)
+            entity = self._row_to_dict(result)
+            
+            # 如果启用通用名标准化且是药物
+            if normalize_to_generic and entity_type == 'Drug' and entity.get('is_generic') == 0:
+                generic_name = entity.get('generic_name')
+                if generic_name:
+                    generic_info = self.search_by_generic_name(generic_name, return_products=True)
+                    return {
+                        'matched_product': entity,
+                        'generic_name': generic_name,
+                        'generic_entity': generic_info['generic_entity'],
+                        'related_products': generic_info['products'],
+                        'normalized': True
+                    }
+            
+            return entity
         
         # 3. 如果启用模糊回退，尝试包含匹配（部分匹配）
         if fuzzy_fallback:
@@ -225,6 +258,48 @@ class MedicalKnowledgeGraphDB:
         
         results = cursor.execute(query, (drug_name, drug_name)).fetchall()
         return [self._row_to_dict(row) for row in results]
+    
+    def search_by_generic_name(self, generic_name: str, return_products: bool = True) -> Dict:
+        """
+        按通用名搜索药物
+        
+        Args:
+            generic_name: 药品通用名（如"阿司匹林"）
+            return_products: 是否返回相关制剂列表
+        
+        Returns:
+            包含通用名信息和相关制剂的字典
+        """
+        cursor = self.conn.cursor()
+        
+        # 查找通用名实体
+        cursor.execute('''
+            SELECT * FROM entities 
+            WHERE generic_name = ? AND type = 'Drug' AND is_generic = 1
+            LIMIT 1
+        ''', (generic_name,))
+        
+        generic_entity = cursor.fetchone()
+        
+        result = {
+            'generic_name': generic_name,
+            'generic_entity': self._row_to_dict(generic_entity) if generic_entity else None,
+            'products': []
+        }
+        
+        if return_products:
+            # 查找所有相关制剂
+            cursor.execute('''
+                SELECT * FROM entities 
+                WHERE generic_name = ? AND type = 'Drug' AND is_generic = 0
+                ORDER BY name
+            ''', (generic_name,))
+            
+            products = cursor.fetchall()
+            result['products'] = [self._row_to_dict(row) for row in products]
+            result['product_count'] = len(products)
+        
+        return result
     
     def get_target_drugs(self, target_name: str) -> List[Dict]:
         """

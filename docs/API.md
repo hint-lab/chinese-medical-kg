@@ -286,5 +286,5 @@ uvicorn src.api.main:app --host 0.0.0.0 --port 8001
 ## 🔗 相关文档
 
 - [README.md](../README.md) - 项目主文档
-- [数据源推荐.md](../数据源推荐.md) - 数据源说明
+- [data_sources_recommendation.md](../data_sources_recommendation.md) - 数据源说明
 - [ontology/README.md](../ontology/README.md) - 技术细节

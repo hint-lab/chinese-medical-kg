@@ -46,29 +46,38 @@ result = linker.link("阿司匹林")             # 链接实体 ✅
 ### 方式 3：运行示例
 
 ```bash
-python 最简单示例.py          # 3行代码示例
-python 示例_ontology使用.py    # 完整演示
+python simple_example.py          # 3行代码示例
+python example_ontology_usage.py    # 完整演示
 ```
 
 ### 方式 4：使用数据库版本（推荐）⭐⭐⭐
 
 ```bash
 # 1. 迁移到SQLite（首次运行，仅需3秒）
+# 注意：通用名字段已在构建时自动提取，无需额外步骤
 python scripts/migrate_to_sqlite.py
 
 # 2. 交互式查询（10-50倍性能提升！）
 python kg_query_db.py
 
-# 3. Python API
+# 4. Python API
 from ontology.db_loader import MedicalKnowledgeGraphDB
 db = MedicalKnowledgeGraphDB()
 result = db.search_entity("阿司匹林")  # <1ms ⚡
+
+# 5. 通用名查询（新增）⭐
+result = db.search_entity("阿司匹林片", normalize_to_generic=True)
+# 返回通用名"阿司匹林"和所有相关制剂
 ```
 
 **性能对比**:
 - ⚡ 加载时间: 3-5秒 → <100ms (30-50倍)
 - ⚡ 查询速度: 10-50ms → <1ms (10-50倍)
 - 💾 存储空间: 200MB → 41MB (节省80%)
+
+**新功能**: 支持药品通用名标准化 ⭐
+- 区分药品通用名（如"阿司匹林"）和上市药品（如"阿司匹林片"）
+- 支持两种查询粒度：精确制剂 vs 通用名聚合
 
 ---
 
@@ -125,6 +134,12 @@ python kg_query_db.py
 # 搜索实体
 python scripts/kg_cli.py search 阿司匹林 --type Drug
 
+# 搜索制剂并标准化到通用名（新增）⭐
+python scripts/kg_cli.py search 阿司匹林片 --type Drug --generic
+
+# 按通用名查询所有制剂（新增）⭐
+python scripts/kg_cli.py generic 阿司匹林
+
 # 模糊搜索
 python scripts/kg_cli.py fuzzy 糖尿 --limit 5
 
@@ -154,8 +169,10 @@ uvicorn src.api.main:app --host 0.0.0.0 --port 8000
 ```
 
 **API端点**:
-- `GET /api/entities/search?name=<name>&type=<type>` - 搜索实体
+- `GET /api/entities/search?name=<name>&type=<type>&normalize_to_generic=<bool>` - 搜索实体（支持通用名标准化）⭐
 - `GET /api/entities/fuzzy?keyword=<keyword>` - 模糊搜索
+- `GET /api/generic/search?generic_name=<name>` - 按通用名查询（新增）⭐
+- `GET /api/generic/products?generic_name=<name>` - 获取通用名的所有制剂（新增）⭐
 - `GET /api/drugs/{drug_name}/targets` - 查询药物的靶点
 - `GET /api/targets/{target_name}/drugs` - 查询靶点的药物
 - `GET /api/statistics` - 获取统计信息
@@ -334,8 +351,8 @@ python scripts/build_ontology.py --data-dir ./data --output-dir ./ontology/data
 ```
 chinese-medical-kg/
 ├── README.md                        # 本文件（完整文档）
-├── 最简单示例.py                    # 3行代码示例
-├── 示例_ontology使用.py              # 完整演示（8个场景）
+├── simple_example.py                    # 3行代码示例
+├── example_ontology_usage.py              # 完整演示（8个场景）
 ├── 快速开始.sh                      # 一键运行脚本
 ├── kg_query_db.py                   # 交互式查询工具（SQLite版）⭐⭐⭐
 │
@@ -378,7 +395,7 @@ chinese-medical-kg/
 ├── utils/                           # 工具模块
 ├── docs/                            # 文档目录
 │   └── API.md                      # API完整使用文档 ⭐⭐⭐
-├── 数据源推荐.md                    # 数据源推荐
+├── data_sources_recommendation.md                    # 数据源推荐
 └── source.md                        # 高质量数据源列表
 ```
 
@@ -414,7 +431,7 @@ chinese-medical-kg/
 | DisGeNET | 基因-疾病关联 | 多源整合，评分机制 | [官网](https://www.disgenet.org/) |
 | SIDER | 药物副作用 | 1,430 种药物副作用 | [下载](http://sideeffects.embl.de/) |
 
-**查看完整数据源列表和集成指南**: [`数据源推荐.md`](数据源推荐.md) 📊
+**查看完整数据源列表和集成指南**: [`data_sources_recommendation.md`](data_sources_recommendation.md) 📊
 
 ### TTD 数据集成（已完成）⭐
 
@@ -432,7 +449,7 @@ python scripts/merge_ontology.py
 python scripts/test_unified_kg.py
 ```
 
-**详细说明**: 见 [`数据源推荐.md`](数据源推荐.md) 📋
+**详细说明**: 见 [`data_sources_recommendation.md`](data_sources_recommendation.md) 📋
 
 ---
 
@@ -451,7 +468,14 @@ docker-compose up -d
 # http://localhost:8000/docs
 ```
 
-**详细部署指南**: [`Docker部署指南.md`](Docker部署指南.md) 🐳
+### 国内用户加速（推荐）⚡
+
+```bash
+# 使用国内优化版（构建速度提升5-10倍）
+docker-compose -f docker-compose.cn.yml up -d
+```
+
+**详细部署指南**: [`docker_deployment_guide.md`](docker_deployment_guide.md) 🐳（包含国内加速配置）
 
 ---
 
@@ -506,8 +530,8 @@ db = MedicalKnowledgeGraphDB()
 pytest tests/
 
 # 运行示例脚本
-python 最简单示例.py
-python 示例_ontology使用.py
+python simple_example.py
+python example_ontology_usage.py
 ```
 
 ---
@@ -677,7 +701,7 @@ MIT License
 ## 🎓 学习路径
 
 ### 新手（5分钟）
-1. 运行 `./快速开始.sh` 或 `python 最简单示例.py`
+1. 运行 `./quick_start.sh` 或 `python simple_example.py`
 2. 查看输出，理解功能
 
 ### 入门（15分钟）
@@ -685,7 +709,7 @@ MIT License
 2. 修改示例代码，测试自己的数据
 
 ### 进阶（30分钟）
-1. 运行 `python 示例_ontology使用.py`
+1. 运行 `python example_ontology_usage.py`
 2. 学习8个实际应用场景
 3. 尝试扩展本体数据
 
@@ -700,9 +724,9 @@ MIT License
 ## 📞 获取帮助
 
 ### 快速入门
-- **最简单示例**: `python 最简单示例.py`
-- **完整演示**: `python 示例_ontology使用.py`
-- **一键运行**: `./快速开始.sh`
+- **最简单示例**: `python simple_example.py`
+- **完整演示**: `python example_ontology_usage.py`
+- **一键运行**: `./quick_start.sh`
 
 ### API和工具
 - **API文档**: [`docs/API.md`](docs/API.md) ⭐⭐⭐
@@ -710,7 +734,7 @@ MIT License
 
 ### 技术文档
 - **本体技术**: `ontology/README.md`
-- **数据源推荐**: [`数据源推荐.md`](数据源推荐.md)
+- **数据源推荐**: [`data_sources_recommendation.md`](data_sources_recommendation.md)
 - **高质量数据源**: `source.md`
 
 ### 问题反馈

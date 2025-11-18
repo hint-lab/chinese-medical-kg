@@ -18,19 +18,76 @@ def load_json(file_path):
         return json.load(f)
 
 
+def extract_generic_name_and_dosage(drug_name: str) -> tuple:
+    """
+    从药品名称中提取通用名和剂型（与parse_official_medical_excel.py保持一致）
+    """
+    if not drug_name:
+        return drug_name, None, True
+    
+    DOSAGE_FORMS = [
+        '注射液', '注射剂', '针剂',
+        '肠溶片', '肠溶胶囊',
+        '缓释片', '缓释胶囊',
+        '控释片', '控释胶囊',
+        '分散片', '咀嚼片', '泡腾片', '口含片', '舌下片',
+        '薄膜衣片', '糖衣片',
+        '片', '片剂',
+        '胶囊', '胶囊剂',
+        '颗粒', '颗粒剂',
+        '散', '散剂',
+        '丸', '丸剂',
+        '栓', '栓剂',
+        '软膏', '软膏剂',
+        '乳膏', '乳膏剂',
+        '凝胶', '凝胶剂',
+        '贴', '贴剂',
+        '喷雾', '喷雾剂',
+        '吸入', '吸入剂',
+        '滴眼', '滴眼液',
+        '滴耳', '滴耳液',
+        '滴鼻', '滴鼻液',
+        '溶液', '溶液剂',
+        '混悬液', '混悬剂',
+        '乳剂',
+        '糖浆', '糖浆剂',
+        '口服液',
+        '合剂',
+    ]
+    
+    sorted_forms = sorted(DOSAGE_FORMS, key=len, reverse=True)
+    
+    for form in sorted_forms:
+        if drug_name.endswith(form):
+            generic_name = drug_name[:-len(form)]
+            if generic_name:
+                return generic_name, form, False
+    
+    return drug_name, None, True
+
+
 def merge_drugs(nmpa_drugs, ttd_drugs):
     """
     合并NMPA和TTD的药物数据
     优先使用NMPA数据，TTD数据作为补充
+    确保所有药物都有通用名字段
     """
     merged = {}
     
     # 1. 加载NMPA药物（主要数据源）
     print(f"加载NMPA药物: {len(nmpa_drugs)} 条")
     for drug_name, drug_info in nmpa_drugs.items():
+        # 如果NMPA数据已经有通用名字段，直接使用；否则提取
+        if 'generic_name' not in drug_info:
+            generic_name, dosage_form, is_generic = extract_generic_name_and_dosage(drug_name)
+            drug_info['generic_name'] = generic_name
+            drug_info['is_generic'] = is_generic
+            if dosage_form:
+                drug_info['dosage_form'] = dosage_form
+        
         merged[drug_name] = {
             **drug_info,
-            'data_sources': ['NMPA']
+            'data_sources': drug_info.get('data_sources', ['NMPA'])
         }
     
     # 2. 加载TTD药物（补充数据源）
@@ -39,10 +96,19 @@ def merge_drugs(nmpa_drugs, ttd_drugs):
     updated_count = 0
     
     for drug_name, drug_info in ttd_drugs.items():
+        # 为TTD药物提取通用名（如果还没有）
+        if 'generic_name' not in drug_info:
+            generic_name, dosage_form, is_generic = extract_generic_name_and_dosage(drug_name)
+            drug_info['generic_name'] = generic_name
+            drug_info['is_generic'] = is_generic
+            if dosage_form:
+                drug_info['dosage_form'] = dosage_form
+        
         if drug_name in merged:
             # 已存在，补充TTD信息
             merged[drug_name]['ttd_drug_id'] = drug_info.get('drug_id')
-            merged[drug_name]['data_sources'].append('TTD')
+            if 'TTD' not in merged[drug_name]['data_sources']:
+                merged[drug_name]['data_sources'].append('TTD')
             
             # 合并别名
             ttd_aliases = drug_info.get('aliases', [])
@@ -62,6 +128,12 @@ def merge_drugs(nmpa_drugs, ttd_drugs):
     print(f"  - 新增药物: {added_count} 条")
     print(f"  - 更新药物: {updated_count} 条")
     print(f"  - 合并后总计: {len(merged)} 条")
+    
+    # 统计通用名信息
+    generic_count = sum(1 for d in merged.values() if d.get('is_generic', False))
+    product_count = len(merged) - generic_count
+    print(f"  - 通用名: {generic_count} 条")
+    print(f"  - 制剂: {product_count} 条")
     
     return merged
 

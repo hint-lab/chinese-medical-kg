@@ -22,7 +22,12 @@ def main():
     import json
     
     parser = argparse.ArgumentParser(description="构建医学本体数据")
-    parser.add_argument("--data-dir", default="../data", help="数据源目录")
+    # 统一使用项目目录下的 data/ 目录（如果不存在则尝试 data_sources/，兼容旧版本）
+    root_dir = Path(__file__).resolve().parents[1]
+    default_data_dir = root_dir / "data"
+    if not default_data_dir.exists():
+        default_data_dir = root_dir / "data_sources"
+    parser.add_argument("--data-dir", default=str(default_data_dir), help="数据源目录")
     parser.add_argument("--output-dir", default="./ontology/data", help="输出目录")
     parser.add_argument("--skip-api", action="store_true", help="跳过API调用")
     args = parser.parse_args()

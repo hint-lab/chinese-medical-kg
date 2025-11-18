@@ -174,8 +174,54 @@ def build_gene_ontology(targets, target_drug_mapping):
     return genes
 
 
+def extract_generic_name_and_dosage(drug_name: str) -> tuple:
+    """从药品名称中提取通用名和剂型"""
+    if not drug_name:
+        return drug_name, None, True
+    
+    DOSAGE_FORMS = [
+        '注射液', '注射剂', '针剂',
+        '肠溶片', '肠溶胶囊',
+        '缓释片', '缓释胶囊',
+        '控释片', '控释胶囊',
+        '分散片', '咀嚼片', '泡腾片', '口含片', '舌下片',
+        '薄膜衣片', '糖衣片',
+        '片', '片剂',
+        '胶囊', '胶囊剂',
+        '颗粒', '颗粒剂',
+        '散', '散剂',
+        '丸', '丸剂',
+        '栓', '栓剂',
+        '软膏', '软膏剂',
+        '乳膏', '乳膏剂',
+        '凝胶', '凝胶剂',
+        '贴', '贴剂',
+        '喷雾', '喷雾剂',
+        '吸入', '吸入剂',
+        '滴眼', '滴眼液',
+        '滴耳', '滴耳液',
+        '滴鼻', '滴鼻液',
+        '溶液', '溶液剂',
+        '混悬液', '混悬剂',
+        '乳剂',
+        '糖浆', '糖浆剂',
+        '口服液',
+        '合剂',
+    ]
+    
+    sorted_forms = sorted(DOSAGE_FORMS, key=len, reverse=True)
+    
+    for form in sorted_forms:
+        if drug_name.endswith(form):
+            generic_name = drug_name[:-len(form)]
+            if generic_name:
+                return generic_name, form, False
+    
+    return drug_name, None, True
+
+
 def build_drug_ontology(drugs, synonyms):
-    """构建药物本体"""
+    """构建药物本体（包含通用名字段）"""
     drug_ontology = {}
     
     for drug_id, info in drugs.items():
@@ -184,6 +230,9 @@ def build_drug_ontology(drugs, synonyms):
         if not drug_name:
             # 如果没有名称，跳过
             continue
+        
+        # 提取通用名和剂型
+        generic_name, dosage_form, is_generic = extract_generic_name_and_dosage(drug_name)
         
         # 获取别名
         aliases = synonyms.get(drug_id, [])
@@ -197,8 +246,13 @@ def build_drug_ontology(drugs, synonyms):
             'therapeutic_class': info.get('THERCLAS', ''),
             'company': info.get('DRUGCOMP', ''),
             'aliases': aliases,
-            'source': 'TTD'
+            'source': 'TTD',
+            'generic_name': generic_name,
+            'is_generic': is_generic
         }
+        
+        if dosage_form:
+            drug_ontology[drug_name]['dosage_form'] = dosage_form
     
     return drug_ontology
 
@@ -246,18 +300,22 @@ def main():
     print("  TTD 数据解析与整合")
     print("=" * 60)
     
-    # 数据目录
-    data_dir = Path('data/ttd')
-    output_dir = Path('ontology/data')
+    # 数据目录（优先使用 data/ttd，如果不存在则尝试 data_sources/ttd）
+    root_dir = Path(__file__).resolve().parents[1]
+    data_dir = root_dir / 'data' / 'ttd'
+    if not data_dir.exists():
+        data_dir = root_dir / 'data_sources' / 'ttd'
+    
+    output_dir = root_dir / 'ontology' / 'data'
     output_dir.mkdir(parents=True, exist_ok=True)
     
     # 检查数据目录
     if not data_dir.exists():
         print(f"\n❌ 数据目录不存在: {data_dir}")
         print(f"请先创建目录并下载 TTD 数据:")
-        print(f"  mkdir -p {data_dir}")
-        print(f"  cd {data_dir}")
-        print(f"  # 下载 TTD 数据文件...")
+        print(f"  mkdir -p data/ttd")
+        print(f"  ./scripts/download_ttd_data.sh")
+        print(f"   或访问: https://ttd.idrblab.cn/full-data-download")
         return
     
     print(f"\n数据目录: {data_dir.absolute()}")
@@ -352,7 +410,7 @@ def main():
     print("\n下一步:")
     print("  1. 查看生成的文件: ls -lh ontology/data/*_ttd.json")
     print("  2. 将 TTD 数据合并到主本体: python scripts/merge_ontology.py")
-    print("  3. 测试: python 最简单示例.py")
+    print("  3. 测试: python simple_example.py")
 
 
 if __name__ == '__main__':
