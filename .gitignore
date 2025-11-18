@@ -1,0 +1,61 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# 虚拟环境
+venv/
+ENV/
+env/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 测试
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# 数据文件
+data_sources/
+*.xlsx
+*.xls
+*.csv
+*.tsv
+
+# 日志
+*.log
+logs/
+
+# 临时文件
+.DS_Store
+Thumbs.db
+*.tmp
+
+# 环境变量
+.env
+.env.local
+

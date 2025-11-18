@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 数据文件（不包含在镜像中，通过volume挂载）
+data/
+*.db
+*.json
+!ontology/data/*.db
+
+# 测试和文档
+tests/
+*.md
+!README.md
+docs/
+
+# Git
+.git/
+.gitignore
+
+# 其他
+*.log
+.DS_Store
+node_modules/
+
