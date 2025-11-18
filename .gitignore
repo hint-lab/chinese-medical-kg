@@ -41,10 +41,19 @@ htmlcov/
 
 # 数据文件
 data_sources/
+data/ttd/
 *.xlsx
 *.xls
 *.csv
 *.tsv
+
+# 生成的本体数据文件（应该通过脚本生成，不需要提交到 Git）
+ontology/data/*.json
+ontology/data/*.db
+ontology/data/*.db-shm
+ontology/data/*.db-wal
+# 但保留目录结构
+!ontology/data/.gitkeep
 
 # 日志
 *.log
