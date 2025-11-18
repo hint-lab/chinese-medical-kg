@@ -7,6 +7,12 @@ import sqlite3
 import json
 from pathlib import Path
 import time
+import sys
+
+# 添加项目根目录到路径
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from scripts.extract_generic_names import extract_generic_name_and_dosage
 
 
 class JSONToSQLiteMigrator:
@@ -38,6 +44,9 @@ class JSONToSQLiteMigrator:
                 standard_name TEXT NOT NULL,
                 type TEXT NOT NULL,  -- Drug, Disease, Gene
                 source TEXT,         -- NMPA, ICD-10, TTD
+                generic_name TEXT,   -- 通用名（用于药物）
+                dosage_form TEXT,    -- 剂型（用于药物）
+                is_generic INTEGER DEFAULT 0,  -- 是否为通用名（0=制剂，1=通用名）
                 data TEXT            -- JSON格式存储其他属性
             );
             
@@ -45,6 +54,8 @@ class JSONToSQLiteMigrator:
             CREATE INDEX idx_entities_standard_name ON entities(standard_name);
             CREATE INDEX idx_entities_type ON entities(type);
             CREATE INDEX idx_entities_source ON entities(source);
+            CREATE INDEX idx_entities_generic_name ON entities(generic_name);
+            CREATE INDEX idx_entities_is_generic ON entities(is_generic);
             
             -- 别名表（用于快速别名查询）
             CREATE TABLE aliases (
@@ -112,12 +123,22 @@ class JSONToSQLiteMigrator:
                 source = ','.join(sources) if isinstance(sources, list) else sources
                 
                 data_to_store = {k: v for k, v in info.items() 
-                               if k not in ['aliases', 'data_sources', 'standard_name']}
+                               if k not in ['aliases', 'data_sources', 'standard_name', 'generic_name', 'dosage_form', 'is_generic']}
+                
+                # 提取通用名和剂型
+                generic_name = info.get('generic_name')
+                dosage_form = info.get('dosage_form')
+                is_generic = info.get('is_generic', 0)
+                
+                # 如果没有通用名字段，尝试从名称中提取
+                if not generic_name:
+                    generic_name, dosage_form, is_generic_flag = extract_generic_name_and_dosage(name)
+                    is_generic = 1 if is_generic_flag else 0
                 
                 cursor.execute('''
-                    INSERT INTO entities (name, standard_name, type, source, data)
-                    VALUES (?, ?, ?, ?, ?)
-                ''', (name, standard_name, 'Drug', source, 
+                    INSERT INTO entities (name, standard_name, type, source, generic_name, dosage_form, is_generic, data)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (name, standard_name, 'Drug', source, generic_name, dosage_form, is_generic,
                       json.dumps(data_to_store, ensure_ascii=False)))
                 
                 entity_id = cursor.lastrowid
@@ -149,9 +170,9 @@ class JSONToSQLiteMigrator:
                                if k not in ['aliases', 'data_sources', 'standard_name']}
                 
                 cursor.execute('''
-                    INSERT INTO entities (name, standard_name, type, source, data)
-                    VALUES (?, ?, ?, ?, ?)
-                ''', (name, standard_name, 'Disease', source, 
+                    INSERT INTO entities (name, standard_name, type, source, generic_name, dosage_form, is_generic, data)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (name, standard_name, 'Disease', source, None, None, 0,
                       json.dumps(data_to_store, ensure_ascii=False)))
                 
                 entity_id = cursor.lastrowid
@@ -183,9 +204,9 @@ class JSONToSQLiteMigrator:
                                if k not in ['aliases', 'data_sources', 'standard_name']}
                 
                 cursor.execute('''
-                    INSERT INTO entities (name, standard_name, type, source, data)
-                    VALUES (?, ?, ?, ?, ?)
-                ''', (name, standard_name, 'Gene', source, 
+                    INSERT INTO entities (name, standard_name, type, source, generic_name, dosage_form, is_generic, data)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (name, standard_name, 'Gene', source, None, None, 0,
                       json.dumps(data_to_store, ensure_ascii=False)))
                 
                 entity_id = cursor.lastrowid

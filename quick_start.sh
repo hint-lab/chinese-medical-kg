@@ -149,7 +149,7 @@ except:
     
     # 步骤4: 迁移到 SQLite 数据库
     echo ""
-    echo "[步骤 4/4] 迁移到 SQLite 数据库（提升性能）..."
+    echo "[步骤 4/5] 迁移到 SQLite 数据库（提升性能）..."
     python scripts/migrate_to_sqlite.py
     if [ $? -eq 0 ]; then
         echo "✅ SQLite 数据库创建完成"
@@ -162,6 +162,37 @@ except:
     else
         echo "⚠️  SQLite 数据库迁移失败（可选步骤）"
     fi
+    
+    # 步骤5: 检查并添加通用名字段（如果数据库已存在但缺少字段）
+    echo ""
+    echo "[步骤 5/5] 检查数据库字段完整性..."
+    if [ -f "ontology/data/medical_kg.db" ]; then
+        # 检查是否需要添加 generic_name 字段
+        has_generic=$(python3 -c "
+import sqlite3
+try:
+    conn = sqlite3.connect('ontology/data/medical_kg.db')
+    cursor = conn.cursor()
+    cursor.execute('PRAGMA table_info(entities)')
+    columns = [col[1] for col in cursor.fetchall()]
+    conn.close()
+    print('1' if 'generic_name' in columns else '0')
+except:
+    print('0')
+" 2>/dev/null || echo "0")
+        
+        if [ "$has_generic" = "0" ]; then
+            echo "⚠️  数据库缺少 generic_name 字段，正在添加..."
+            python scripts/add_generic_name_to_db.py
+            if [ $? -eq 0 ]; then
+                echo "✅ 通用名字段添加完成"
+            else
+                echo "⚠️  通用名字段添加失败"
+            fi
+        else
+            echo "✅ 数据库字段完整"
+        fi
+    fi
 fi
 
 # 检查 SQLite 数据库
@@ -171,16 +202,123 @@ if [ -f "ontology/data/medical_kg.db" ]; then
     echo "✅ SQLite 数据库已就绪"
     db_size=$(du -h ontology/data/medical_kg.db | cut -f1)
     echo "   - 文件大小: $db_size"
+    
+    # 检查数据库字段完整性
+    has_generic=$(python3 -c "
+import sqlite3
+try:
+    conn = sqlite3.connect('ontology/data/medical_kg.db')
+    cursor = conn.cursor()
+    cursor.execute('PRAGMA table_info(entities)')
+    columns = [col[1] for col in cursor.fetchall()]
+    conn.close()
+    print('1' if 'generic_name' in columns else '0')
+except:
+    print('0')
+" 2>/dev/null || echo "0")
+    
+    if [ "$has_generic" = "0" ]; then
+        echo "⚠️  数据库缺少 generic_name 字段"
+        echo "   提示: 运行 'python scripts/add_generic_name_to_db.py' 添加字段"
+        echo ""
+        read -p "是否现在添加 generic_name 字段？[Y/n] " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Nn]$ ]]; then
+            python scripts/add_generic_name_to_db.py
+        fi
+    fi
 else
     echo "⚠️  SQLite 数据库不存在"
     echo "   提示: 运行 'python scripts/migrate_to_sqlite.py' 创建数据库"
 fi
 
-# 运行演示
+# 询问是否使用 Docker 部署
 echo ""
-echo "5️⃣  运行演示脚本..."
+echo "5️⃣  选择部署方式..."
 echo ""
-python3 example_ontology_usage.py
+echo "请选择部署方式:"
+echo "  1) 本地运行演示脚本（默认）"
+echo "  2) Docker 部署 API 服务"
+echo "  3) 跳过演示，直接查看使用指南"
+echo ""
+read -p "请输入选项 [1-3] (默认: 1): " deploy_choice
+deploy_choice=${deploy_choice:-1}
+
+case $deploy_choice in
+    2)
+        echo ""
+        echo "🐳 开始 Docker 部署..."
+        
+        # 检查 Docker 是否安装
+        if ! command -v docker &> /dev/null; then
+            echo "❌ Docker 未安装，请先安装 Docker"
+            echo "   安装指南: https://docs.docker.com/get-docker/"
+            exit 1
+        fi
+        
+        if ! command -v docker-compose &> /dev/null; then
+            echo "❌ docker-compose 未安装，请先安装 docker-compose"
+            echo "   安装指南: https://docs.docker.com/compose/install/"
+            exit 1
+        fi
+        
+        echo ""
+        echo "选择 Docker 配置:"
+        echo "  1) 标准版（docker-compose.yml）"
+        echo "  2) 国内加速版（docker-compose.cn.yml，推荐）"
+        read -p "请输入选项 [1-2] (默认: 2): " docker_choice
+        docker_choice=${docker_choice:-2}
+        
+        if [ "$docker_choice" = "2" ]; then
+            COMPOSE_FILE="docker-compose.cn.yml"
+            echo "✅ 使用国内加速版配置"
+        else
+            COMPOSE_FILE="docker-compose.yml"
+            echo "✅ 使用标准配置"
+        fi
+        
+        echo ""
+        echo "正在启动 Docker 服务..."
+        docker-compose -f $COMPOSE_FILE up -d
+        
+        if [ $? -eq 0 ]; then
+            echo ""
+            echo "✅ Docker 服务启动成功！"
+            echo ""
+            echo "📚 访问信息:"
+            echo "  - API 文档: http://localhost:8000/docs"
+            echo "  - API 根路径: http://localhost:8000/"
+            echo ""
+            echo "🔧 常用命令:"
+            echo "  - 查看日志: docker-compose -f $COMPOSE_FILE logs -f"
+            echo "  - 停止服务: docker-compose -f $COMPOSE_FILE down"
+            echo "  - 重启服务: docker-compose -f $COMPOSE_FILE restart"
+            echo ""
+            echo "等待服务启动（约 10-30 秒）..."
+            sleep 5
+            
+            # 检查服务状态
+            if curl -f http://localhost:8000/ &> /dev/null; then
+                echo "✅ API 服务已就绪！"
+            else
+                echo "⏳ 服务正在启动中，请稍候访问 http://localhost:8000/docs"
+            fi
+        else
+            echo "❌ Docker 服务启动失败，请检查错误信息"
+        fi
+        ;;
+    3)
+        echo ""
+        echo "⏭️  跳过演示"
+        ;;
+    *)
+        # 默认运行演示脚本
+        echo ""
+        echo "6️⃣  运行演示脚本..."
+        echo ""
+        python3 example_ontology_usage.py
+        ;;
+esac
 
 echo ""
 echo "=========================================="
@@ -224,6 +362,18 @@ except:
     echo "   from ontology.db_loader import MedicalKnowledgeGraphDB"
     echo "   db = MedicalKnowledgeGraphDB()"
     echo "   result = db.search_entity('阿司匹林')"
+    echo ""
+    echo "4. Docker 部署（推荐）🐳:"
+    echo "   # 标准部署"
+    echo "   docker-compose up -d"
+    echo ""
+    echo "   # 国内用户加速版（推荐）"
+    echo "   docker-compose -f docker-compose.cn.yml up -d"
+    echo ""
+    echo "   # 访问 API 文档"
+    echo "   http://localhost:8000/docs"
+    echo ""
+    echo "   详细部署指南: cat docker_deployment_guide.md"
     echo ""
     if [ -f "ontology/data/medical_kg.db" ]; then
         echo "✅ SQLite 数据库已就绪，查询速度提升 10-50 倍！"
