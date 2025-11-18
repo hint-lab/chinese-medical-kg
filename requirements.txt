@@ -1,0 +1,16 @@
+# 核心依赖
+rapidfuzz>=3.0.0
+pandas>=2.0.0
+openpyxl>=3.1.0
+requests>=2.31.0
+httpx>=0.25.0
+pydantic>=2.0.0
+python-dotenv>=1.0.0
+
+# API服务（可选）
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+
+# 异步支持
+aiofiles>=23.2.0
+

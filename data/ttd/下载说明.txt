@@ -1,0 +1,36 @@
+TTD 数据下载说明
+========================================
+
+✅ 方法 1：自动下载（推荐）
+--------------------
+cd /home/hao/chinese-medical-kg
+./scripts/download_ttd_data.sh
+
+✅ 方法 2：手动命令下载
+--------------------
+cd /home/hao/chinese-medical-kg/data/ttd
+
+# 使用正确的 URL 下载
+wget https://ttd.idrblab.cn/files/download/P1-01-TTD_target_download.txt
+wget https://ttd.idrblab.cn/files/download/P1-02-TTD_drug_download.txt
+wget https://ttd.idrblab.cn/files/download/P1-04-Drug_synonyms.txt
+wget https://ttd.idrblab.cn/files/download/P1-05-Drug_disease.txt
+wget https://ttd.idrblab.cn/files/download/P1-06-Target_disease.txt
+wget https://ttd.idrblab.cn/files/download/P1-07-Drug-TargetMapping.xlsx
+
+
+✅ 方法 3：浏览器下载
+--------------------
+访问: https://ttd.idrblab.cn/full-data-download
+点击对应的 "Click to download" 按钮
+
+下载完成后
+========================================
+1. 验证文件:
+   python scripts/verify_ttd_data.py
+
+2. 解析数据:
+   python scripts/parse_ttd_data.py
+
+3. 测试:
+   python 最简单示例.py
